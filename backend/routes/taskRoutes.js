@@ -1,121 +1,117 @@
-
 const express = require("express");
 const router = express.Router();
-
-// Temporary tasks data
-let tasks = [
-    {
-        id: 1,
-        title: "Learn Node.js",
-        description: "Understand backend basics",
-        completed: false
-    },
-    {
-        id: 2,
-        title: "Build Task Management App",
-        description: "Create backend APIs",
-        completed: false
-    }
-];
+const Task = require("../models/Task");
 
 // GET: Get all tasks
-router.get("/", (req, res) => {
-    res.json(tasks);
+router.get("/", async (req, res) => {
+    try {
+        const tasks = await Task.find().sort({ createdAt: -1 });
+        res.json(tasks);
+    } catch (error) {
+        res.status(500).json({ message: "Failed to fetch tasks" });
+    }
 });
 
 // POST: Create a new task
-router.post("/", (req, res) => {
-    const { title, description } = req.body;
+router.post("/", async (req, res) => {
+    try {
+        const { title, description } = req.body;
 
-    if (typeof title !== "string" || !title.trim()) {
-        return res.status(400).json({
-            message: "Task title is required"
+        if (typeof title !== "string" || !title.trim()) {
+            return res.status(400).json({
+                message: "Task title is required"
+            });
+        }
+
+        const task = await Task.create({
+            title: title.trim(),
+            description: description ?? ""
         });
+
+        res.status(201).json({
+            message: "Task created successfully",
+            task
+        });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to create task" });
     }
-
-    const newTask = {
-        id: Date.now(),
-        title: title.trim(),
-        description: description || "",
-        completed: false
-    };
-
-    tasks.push(newTask);
-
-    res.status(201).json({
-        message: "Task created successfully",
-        task: newTask
-    });
 });
 
 // PUT: Update an existing task
-router.put("/:id", (req, res) => {
-    const taskId = Number(req.params.id);
-    const task = tasks.find((task) => task.id === taskId);
+router.put("/:id", async (req, res) => {
+    try {
+        const { title, description, completed } = req.body;
 
-    if (!task) {
-        return res.status(404).json({
-            message: "Task not found"
-        });
-    }
-
-    const { title, description, completed } = req.body;
-
-    if (title !== undefined) {
-        if (typeof title !== "string" || !title.trim()) {
+        if (title !== undefined &&
+            (typeof title !== "string" || !title.trim())) {
             return res.status(400).json({
                 message: "Title must be a non-empty string"
             });
         }
 
-        task.title = title.trim();
-    }
-
-    if (description !== undefined) {
-        if (typeof description !== "string") {
+        if (description !== undefined &&
+            typeof description !== "string") {
             return res.status(400).json({
                 message: "Description must be a string"
             });
         }
 
-        task.description = description;
-    }
-
-    if (completed !== undefined) {
-        if (typeof completed !== "boolean") {
+        if (completed !== undefined &&
+            typeof completed !== "boolean") {
             return res.status(400).json({
                 message: "Completed must be true or false"
             });
         }
 
-        task.completed = completed;
-    }
+        const updates = {};
 
-    res.json({
-        message: "Task updated successfully",
-        task
-    });
+        if (title !== undefined) updates.title = title.trim();
+        if (description !== undefined) updates.description = description;
+        if (completed !== undefined) updates.completed = completed;
+
+        const task = await Task.findByIdAndUpdate(
+            req.params.id,
+            updates,
+            { new: true, runValidators: true }
+        );
+
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+
+        res.json({
+            message: "Task updated successfully",
+            task
+        });
+    } catch (error) {
+        if (error.name === "CastError") {
+            return res.status(400).json({ message: "Invalid task ID" });
+        }
+
+        res.status(500).json({ message: "Failed to update task" });
+    }
 });
 
 // DELETE: Delete a task
-router.delete("/:id", (req, res) => {
-    const taskId = Number(req.params.id);
-    const taskIndex = tasks.findIndex(
-        (task) => task.id === taskId
-    );
+router.delete("/:id", async (req, res) => {
+    try {
+        const task = await Task.findByIdAndDelete(req.params.id);
 
-    if (taskIndex === -1) {
-        return res.status(404).json({
-            message: "Task not found"
+        if (!task) {
+            return res.status(404).json({ message: "Task not found" });
+        }
+
+        res.json({
+            message: "Task deleted successfully",
+            task
         });
+    } catch (error) {
+        if (error.name === "CastError") {
+            return res.status(400).json({ message: "Invalid task ID" });
+        }
+
+        res.status(500).json({ message: "Failed to delete task" });
     }
-
-    const deletedTask = tasks.splice(taskIndex, 1)[0];
-
-    res.json({
-        message: "Task deleted successfully",
-        task: deletedTask
-    });
 });
 
 module.exports = router;
